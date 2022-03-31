@@ -12,21 +12,18 @@ import pandas as pd
 from tensorflow import keras
 from tensorflow.keras import layers
 
-from keras import regularizers
-from keras.layers import Dropout
-
 import matplotlib.pyplot as plt
 
 
-#Call data(csvv-file)
+#Call data(csvv-file) "/Users/muqiliu/Desktop/CT.csv"
 dataset = pd.read_csv("/Users/muqiliu/Desktop/CT.csv", header = None)#, verbose=False, sep=";"
 dataset = dataset.drop(0)
 
 X = dataset.iloc[:,1:6] #unabhängige Variable
-y = dataset.iloc[:,6:7] #abhängige Variable
+y = dataset.iloc[:,6] #abhängige Variable
 
 X=np.asarray(X).astype(np.float32)
-y=np.asarray(y).astype(np.float32)
+y=np.asarray(y).astype(np.float32).reshape(-1, 1)
 
 
 
@@ -34,28 +31,19 @@ y=np.asarray(y).astype(np.float32)
 from sklearn.preprocessing import StandardScaler
 sc = StandardScaler()
 X = sc.fit_transform(X)
-##X_test = sc.transform(X_test)
+y = sc.fit_transform(y)
 
-from sklearn.preprocessing import OneHotEncoder
-ohe = OneHotEncoder()
-y = ohe.fit_transform(y).toarray()
 
 from sklearn.model_selection import train_test_split
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.1, random_state = 0)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.3, random_state = 0)
 ############################## Initiate model 1 ###############################
 # Model 1 has no hidden layers
 model1 = keras.Sequential()
-model1.add(layers.Dense(16, activation = "sigmoid"))
-#model1.add(layers.Dense(16, activation = "tanh"))
-#model1.add(layers.Dense(8, activation = "sigmoid"))
-model1.add(Dropout(0.2))
-
-#output layer with 1 output
+#input layer is automatically created
 model1.add(layers.Dense(1, activation = "linear"))
 
 # Compile the model
 model1.compile(loss="mean_squared_error", optimizer='adam') #, metrics= ['accuracy']
-
 
 # Fit model
 history1 = model1.fit(X_train, y_train, validation_data=(X_test,y_test), epochs=100, batch_size = 64)#
@@ -65,48 +53,17 @@ history1 = model1.fit(X_train, y_train, validation_data=(X_test,y_test), epochs=
 # Model 2 has 1 hidden layer 
 
 model2 = keras.Sequential()
-#input layer
-model2.add(layers.Dense(16, activation = "sigmoid" ,kernel_regularizer=regularizers.l2(0.001)))
-#model2.add(layers.Dense(16, activation = "tanh"))
-#model2.add(layers.Dense(8, activation = "sigmoid"))
-model2.add(Dropout(0.2))
-
+#input layer is automatically created
 #add 1 hidden layer
-model2.add(layers.Dense(16, activation = "sigmoid", kernel_regularizer=regularizers.l2(0.001)))
-model2.add(Dropout(0.2))
+model2.add(layers.Dense(16, activation = "sigmoid"))
+#model2.add(Dropout(0.2))
 
 #output layer with 1 output
 model2.add(layers.Dense(1, activation = "linear"))
 
-
 # Compile the model
-model2.compile(loss='mean_squared_error', optimizer='adam', metrics = ['accuracy']) 
-#history2 = model2.fit(X_train, y_train, validation_data=(X_test,y_test), epochs=100, batch_size = 64)
-history2 = model2.fit(X_train, y_train, epochs=100, batch_size = 64)
-
-############################## model3
-model3 = keras.Sequential()
-#input layer
-model3.add(layers.Dense(16, activation = "sigmoid" ,kernel_regularizer=regularizers.l2(0.001)))
-#model2.add(layers.Dense(16, activation = "tanh"))
-#model2.add(layers.Dense(8, activation = "sigmoid"))
-model3.add(Dropout(0.2))
-
-#add 1 hidden layer
-model3.add(layers.Dense(16, activation = "sigmoid", kernel_regularizer=regularizers.l2(0.001)))
-model3.add(Dropout(0.2))
-
-#output layer with 1 output
-model3.add(layers.Dense(1, activation = "linear"))
-
-
-# Compile the model
-model3.compile(loss='mean_squared_error', optimizer='adam', metrics = ['accuracy']) 
-history3 = model3.fit(X_test, y_test,  epochs=100, batch_size = 64)
-
-
-
-
+model2.compile(loss='mean_squared_error', optimizer='adam') 
+history2 = model2.fit(X_train, y_train, validation_data=(X_test,y_test), epochs=100, batch_size = 64)
 
 
 # check the model’s performance on test data
@@ -120,34 +77,19 @@ test = list()
 for i in range(len(y_test)):
     test.append(np.argmax(y_test[i]))
 
-#We will get integer labels using this step    
-from sklearn.metrics import accuracy_score
-a = accuracy_score(pred,test)
-print('Accuracy is:', a*100)
 
 # Fit model
 
 # Plot the models
-#plt.plot(history1.history['val_loss'],'r', history2.history['val_loss'], 'b' )
-plt.plot(history1.history['loss'],'r', history2.history['loss'], 'b' )
+plt.plot(history1.history['val_loss'],'r', history2.history['val_loss'], 'b' )
 plt.xlabel('Epochs')
 plt.ylabel('Validation score')
 plt.show()
 
 # Plot the models
 
-plt.plot(history2.history['accuracy'])
-plt.plot(history3.history['accuracy'])
-#lt.plot(history2.history['val_accuracy'])
-plt.title('Model accuracy')
-plt.ylabel('Accuracy')
-plt.xlabel('Epoch')
-plt.legend(['Train', 'Test'], loc='upper left')
-plt.show()
-
 plt.plot(history2.history['loss']) 
-plt.plot(history3.history['loss']) 
-#plt.plot(history2.history['val_loss']) 
+plt.plot(history2.history['val_loss']) 
 plt.title('Model loss') 
 plt.ylabel('Loss') 
 plt.xlabel('Epoch') 
