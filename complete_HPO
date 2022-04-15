@@ -1,0 +1,286 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Apr 15 10:47:55 2022
+
+@author: muqiliu
+"""
+
+import pandas as pd
+from tensorflow import keras
+from tensorflow.keras import layers
+from sklearn.metrics import mean_squared_error,r2_score,mean_absolute_error#导入回归模型的评价指标--均方误差MSE，拟合幽都R2,平均绝对误差
+import sherpa
+import tensorflow
+from tensorflow.keras.models import Sequential, load_model
+from tensorflow.keras.layers import Dense, Flatten
+from tensorflow.keras.optimizers import Adam
+import tempfile
+import os
+import shutil
+import tensorflow.keras.backend as K
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.pyplot import cm
+import time
+import numpy as np
+#=======================================================================
+#定义神经网络函数
+#=======================================================================
+def build_model(layer_size,
+                learning_rate,
+                activation ):  
+    
+  model=keras.Sequential()
+  model.add(layers.Dense(layer_size,activation))
+  model.add(layers.Dense(1, "linear"))
+  model.compile(optimizer = Adam(lr=learning_rate),loss='mean_squared_error')
+  return model      
+#=======================================================================
+#数据处理与分析
+#=======================================================================
+#Call data(csvv-file) "/Users/muqiliu/Desktop/CT.csv"
+dataset = pd.read_csv("/Users/muqiliu/Desktop/CT.csv", header = None)#, verbose=False, sep=";"
+dataset = dataset.drop(0)
+
+X = dataset.iloc[:,1:6] #unabhängige Variable
+y = dataset.iloc[:,6] #abhängige Variable
+
+X=np.asarray(X).astype(np.float32)
+y=np.asarray(y).astype(np.float32).reshape(-1, 1)
+
+
+
+#Normalizing the data
+from sklearn.preprocessing import StandardScaler
+sc = StandardScaler()
+X = sc.fit_transform(X)
+y = sc.fit_transform(y)
+
+
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2, random_state = 0)
+
+#=======================================================================
+#PBT优化函数
+#=======================================================================
+parameters = [sherpa.Continuous('learning_rate', [1e-4, 1e-2], 'log'),
+              sherpa.Discrete('layer_size', [8,16,32,64]),
+             sherpa.Choice("activation", ['sigmoid','relu','tanh'])]
+algorithm = sherpa.algorithms.PopulationBasedTraining(population_size=5,
+                                                      num_generations=5,
+                                                      perturbation_factors=(0.8, 1.2),
+                                                      parameter_range={'learning_rate': [1e-6, 1e-1]})
+study = sherpa.Study(parameters=parameters,
+                     algorithm=algorithm,
+                     lower_is_better=True,
+                     disable_dashboard=True)
+startTime=time.time()
+for trial in study:
+    generation =trial.parameters['generation']
+    training_lr =trial.parameters['learning_rate']
+    training_layer_size=trial.parameters['layer_size']
+    training_activation=trial.parameters['activation']
+
+    print("-"*100)
+    print("Generation {}".format(generation))    
+
+    print("Creating new model with learning rate {}\n".format(training_lr))
+
+    # Create model
+  
+    # Use learning rate parameter for optimizer  
+    model=build_model(layer_size = training_layer_size,
+                    learning_rate = training_lr,
+                    activation = training_activation)
+    # Train model for one epoch   
+    model.fit(X_train, y_train,epochs = 100, batch_size = 45,verbose=0)
+    loss = model.evaluate(X_test, y_test)    
+    print("Validation loss: ", loss)
+    study.add_observation(trial, iteration=generation,objective=loss,context={'training_error': loss})
+    study.finalize(trial=trial)
+    
+endTime=time.time()     
+PBT_best_result=study.get_best_result()
+model=build_model(layer_size = PBT_best_result['layer_size'],
+                learning_rate = PBT_best_result['learning_rate'],
+                activation = PBT_best_result['activation'])
+# Train model for one epoch   
+history=model.fit(X_train, y_train,epochs = 100, batch_size = 45,verbose=1)
+history_PBT=pd.DataFrame(history.history)
+lossResult=history_PBT
+lossResult.columns=['PBT_loss']
+loss_PBT = model.evaluate(X_test, y_test)
+optimizationResult=pd.DataFrame({"activation_optimization":[PBT_best_result['activation']]
+                                 ,"learning_rate_optimization":[PBT_best_result['learning_rate']]
+                                 ,"layer_size_optimization":[PBT_best_result['layer_size']]
+                                 ,"Loss_optimization":[PBT_best_result['Objective']]
+                                 ,"runTimes_optimization":[endTime-startTime]})
+
+#=======================================================================
+#RandomizedSearch优化算法
+#=======================================================================
+sklearn_model = keras.wrappers.scikit_learn.KerasRegressor(build_fn = build_model)
+from sklearn.model_selection import RandomizedSearchCV# define parameter set & Search parameters
+from scipy.stats import reciprocal
+param_distribution = {
+    "activation": ['sigmoid','relu','tanh'],
+    "layer_size": np.arange(1, 70),
+    "learning_rate": reciprocal(1e-4, 1e-2)
+}
+startTime=time.time()
+
+random_search_cv = RandomizedSearchCV(sklearn_model,
+                                     param_distribution,
+                                     n_iter = 2,
+                                     cv = 3,
+                                     n_jobs = 1)
+random_search_cv.fit(X_train, y_train, epochs = 100,
+                    validation_data = (X_test, y_test))
+endTime=time.time()
+# cross_validation: 训练集分成n份，n-1训练，最后一份验证.
+RSCV_best_result=random_search_cv.best_params_
+model=build_model(layer_size = RSCV_best_result['layer_size'],
+                learning_rate = RSCV_best_result['learning_rate'],
+                activation = RSCV_best_result['activation'])
+# Train model for one epoch   
+history=model.fit(X_train, y_train,epochs = 1000, batch_size = 45,verbose=1)
+history_RSCV=pd.DataFrame(history.history)
+lossResult['RSCV_loss']=history_RSCV
+
+loss=model.evaluate(X_test, y_test)
+
+new=pd.DataFrame({"activation_optimization":[RSCV_best_result['activation']]
+                                 ,"learning_rate_optimization":[RSCV_best_result['learning_rate']]
+                                 ,"layer_size_optimization":[RSCV_best_result['layer_size']]
+                                 ,"Loss_optimization":[loss]
+                                 ,"runTimes_optimization":[endTime-startTime]})
+optimizationResult=optimizationResult.append(new)
+#=======================================================================
+#GridSearchCV 优化算法
+#=======================================================================
+from sklearn.model_selection import  GridSearchCV
+#import xgboost as xgb
+
+
+param_grids = {
+    "activation": ['sigmoid','relu','tanh'],
+    "layer_size": [4, 8, 16, 32, 64],
+    "learning_rate": np.arange(1e-4, 1e-2)#[0.001,0.01,0.1]
+
+}
+startTime=time.time()
+#clf1 = xgb.XGBClassifier()
+grid = GridSearchCV(estimator=sklearn_model,
+        param_grid=param_grids, 
+        cv=5, 
+        n_jobs=-1, 
+        scoring='neg_mean_squared_error',
+        verbose=2)
+grid_result = grid.fit(X_train, y_train,epochs = 100)
+#best_estimator = grid.best_estimator_
+endTime=time.time()
+print(grid_result.best_params_)
+print(grid_result.best_score_)
+grid_best_result=grid_result.best_params_
+model=build_model(layer_size = grid_best_result['layer_size'],
+                learning_rate = grid_best_result['learning_rate'],
+                activation = grid_best_result['activation'])
+# Train model for one epoch   
+history=model.fit(X_train, y_train,epochs = 1000, batch_size = 45,verbose=1)
+history_grid=pd.DataFrame(history.history)
+lossResult['grid_loss']=history_grid
+
+loss=model.evaluate(X_test, y_test)
+new=pd.DataFrame({"activation_optimization":[grid_best_result['activation']]
+                                 ,"learning_rate_optimization":[grid_best_result['learning_rate']]
+                                 ,"layer_size_optimization":[grid_best_result['layer_size']]
+                                 ,"Loss_optimization":[loss]
+                                 ,"runTimes_optimization":[endTime-startTime]})
+optimizationResult=optimizationResult.append(new)
+
+#=======================================================================
+#Hyperopt 优化函数
+#=======================================================================
+from hyperopt import fmin, tpe, hp, STATUS_OK, Trials
+#from sklearn.model_selection import cross_val_score
+import sys
+#'activation':hp.pchoice('activation', [(0.5,'relu'),(0.5,'sigmoid')]),
+space = {'activation':hp.choice('activation',['relu','sigmoid','tanh']),
+    "learning_rate": hp.loguniform('learning_rate', np.log(0.01), np.log(0.5)),
+    "layer_size": hp.choice('layer_size', [8,16,32, 64]),
+}
+
+def f_nn(params):  
+  model=keras.Sequential()
+  model.add(layers.Dense(params['layer_size'],params['activation']))
+  model.add(layers.Dense(1, params['activation']))
+      
+  model.compile(optimizer='adam',loss='mean_squared_error')
+  model.fit(X_train, y_train,epochs = 100, batch_size = 45,verbose=0,
+                              validation_data = (X_test, y_test))
+
+  #pred_auc =model.predict(X_test, batch_size = 128, verbose = 0)
+  #acc = roc_auc_score(y_test, pred_auc)
+  #acc = model.evaluate(X_test, y_test)
+  acc = model.evaluate(X_test, y_test, verbose=0)
+
+  print('AUC:', acc)
+  sys.stdout.flush() 
+  return {'loss': -acc, 'status': STATUS_OK}  # Because fmin() tries to minimize the objective, this function must return the negative accuracy. 
+
+startTime=time.time()
+# Instantiate the Trial object, fine-tune the model, and print the best loss with its hyperparameter values
+trials = Trials()
+best = fmin(f_nn, space, algo=tpe.suggest, max_evals=6, trials=trials)
+print("Best: {}".format(best))
+hyper_best_result=best
+if hyper_best_result['activation']==0:
+    hyper_best_result['activation']='relu'
+if hyper_best_result['activation']==1:
+    hyper_best_result['activation']='sigmoid'
+if hyper_best_result['activation']==2:
+    hyper_best_result['activation']='tanh'    
+        
+endTime=time.time()
+model=build_model(layer_size = hyper_best_result['layer_size'],
+                learning_rate = hyper_best_result['learning_rate'],
+                activation = grid_best_result['activation']
+                )
+# Train model for one epoch   
+history=model.fit(X_train, y_train,epochs = 1000, batch_size = 45,verbose=1)
+history_hyper=pd.DataFrame(history.history)
+lossResult['hyper_loss']=history_hyper
+
+loss=model.evaluate(X_test, y_test)
+new=pd.DataFrame({"activation_optimization":[hyper_best_result['activation']]
+                                 ,"learning_rate_optimization":[hyper_best_result['learning_rate']]
+                                 ,"layer_size_optimization":[hyper_best_result['layer_size']]
+                                 ,"Loss_optimization":[loss]
+                                 ,"runTimes_optimization":[endTime-startTime]})
+optimizationResult=optimizationResult.append(new)
+
+
+#=======================================================================
+#输出结果
+#=======================================================================
+
+optimizationResult.index = ['PBT','RSCV','grid','hyper']
+
+lossResult.to_excel("lossResult.xlsx")
+
+optimizationResult.to_excel("optimizationResult.xlsx")
+
+#=======================================================================
+#对比显示
+#=======================================================================
+
+plt.plot(lossResult,label=['PBT','RSCV','grid','hyper'])
+
+plt.legend()
+
+plt.xlabel('iterations')
+
+plt.ylabel('Loss')
+
+plt.show()
