@@ -186,7 +186,7 @@ grid_best_result=grid_result.best_params_
 model=build_model(layer_size = grid_best_result['layer_size'],
                 learning_rate = grid_best_result['learning_rate'],
                 activation = grid_best_result['activation'])
-# Train model for one epoch   
+# Train model for one epoch   用优化后的参数做了一次训练，方便对比
 history=model.fit(X_train, y_train,epochs = 1000, batch_size = 45,verbose=1)
 history_grid=pd.DataFrame(history.history)
 lossResult['grid_loss']=history_grid
