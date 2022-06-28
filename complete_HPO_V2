@@ -9,7 +9,7 @@ Created on Fri Apr 15 10:47:55 2022
 import pandas as pd
 from tensorflow import keras
 from tensorflow.keras import layers
-from sklearn.metrics import mean_squared_error,r2_score,mean_absolute_error#导入回归模型的评价指标--均方误差MSE，拟合幽都R2,平均绝对误差
+from sklearn.metrics import mean_squared_error,r2_score,mean_absolute_error#Import the evaluation index of regression model - mean square error MSE, fitting Youdu R2, mean absolute error
 import sherpa
 import tensorflow
 from tensorflow.keras.models import Sequential, load_model
@@ -25,10 +25,10 @@ from matplotlib.pyplot import cm
 import time
 import numpy as np
 
-OPTIMIZATION_LOSS=100 #优化迭代
-COMPARE_LOSS=1000     #对比迭代
+OPTIMIZATION_LOSS=100 #optimization iteration
+COMPARE_LOSS=1000     #contrast iteration
 #=======================================================================
-#定义神经网络函数
+#Defining Neural Network Functions
 #=======================================================================
 def build_model(layer_size,
                 learning_rate,
@@ -40,7 +40,7 @@ def build_model(layer_size,
   model.compile(optimizer = Adam(lr=learning_rate),loss='mean_squared_error')
   return model      
 #=======================================================================
-#数据处理与分析
+#Data processing and analysis
 #=======================================================================
 #Call data(csvv-file) "/Users/muqiliu/Desktop/CT.csv"
 dataset = pd.read_csv("CT.csv", header = None)#, verbose=False, sep=";"
@@ -65,7 +65,7 @@ from sklearn.model_selection import train_test_split
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2, random_state = 0)
 
 #=======================================================================
-#PBT优化函数
+#PBT
 #=======================================================================
 parameters = [sherpa.Continuous('learning_rate', [1e-4, 1e-2]),
               sherpa.Continuous('layer_size', [3, 70]),
@@ -108,7 +108,7 @@ endTime=time.time()
 PBT_best_result=study.get_best_result()
 
 #=======================================================================
-#RandomizedSearch优化算法
+#RandomizedSearch
 #=======================================================================
 sklearn_model = keras.wrappers.scikit_learn.KerasRegressor(build_fn = build_model)
 from sklearn.model_selection import RandomizedSearchCV# define parameter set & Search parameters
@@ -128,12 +128,12 @@ random_search_cv = RandomizedSearchCV(sklearn_model,
 random_search_cv.fit(X_train, y_train, epochs = OPTIMIZATION_LOSS,
                     validation_data = (X_test, y_test))
 endTime_RSCV=time.time()
-# cross_validation: 训练集分成n份，n-1训练，最后一份验证.
+# cross_validation: The training set is divided into n parts, n-1 for training, and the last for validation.
 RSCV_best_result=random_search_cv.best_params_
 
 
 #=======================================================================
-#GridSearchCV 优化算法
+#GridSearchCV
 #=======================================================================
 from sklearn.model_selection import  GridSearchCV
 #import xgboost as xgb
@@ -163,7 +163,7 @@ grid_best_result=grid_result.best_params_
 
 
 #=======================================================================
-#Hyperopt 优化函数
+#Hyperopt 
 #=======================================================================
 from hyperopt import fmin, tpe, hp, STATUS_OK, Trials
 #from sklearn.model_selection import cross_val_score
@@ -208,7 +208,7 @@ if hyper_best_result['activation']==2:
 endTime_hyper=time.time()
 
 #=======================================================================
-#输出结果
+#result output
 #=======================================================================
 model=build_model(layer_size = PBT_best_result['layer_size'],
                 learning_rate = PBT_best_result['learning_rate'],
@@ -282,7 +282,7 @@ lossResult.to_excel("lossResult.xlsx")
 optimizationResult.to_excel("optimizationResult.xlsx")
 
 #=======================================================================
-#对比显示
+#Contrast display
 #=======================================================================
 
 plt.plot(lossResult,label=['PBT','RSCV','grid','hyper'])
